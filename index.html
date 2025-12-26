@@ -2,52 +2,93 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Climb App</title>
-
+<title>Climb Pro App</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black">
-<meta name="apple-mobile-web-app-title" content="Climb">
+<meta name="apple-mobile-web-app-title" content="Climb Pro">
+
+<!-- Google Font -->
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet">
 
 <style>
-body {
-  font-family: Arial, sans-serif;
-  background: #f2f2f2;
-  margin: 10px;
+:root {
+  --bg: #f7f8fa;
+  --card-bg: #ffffff;
+  --primary: #007bff;
+  --primary-dark: #0056b3;
+  --secondary: #6c757d;
+  --start-color: rgba(40,167,69,0.3);
+  --normal-color: rgba(220,53,69,0.3);
+  --top-color: rgba(0,123,255,0.3);
 }
-h1, h2 {
-  margin-top: 20px;
+body {
+  font-family: 'Inter', sans-serif;
+  background: var(--bg);
+  margin: 0;
+  padding: 10px;
+  color: #333;
+}
+h1,h2 {
+  margin: 20px 0 10px;
 }
 .card {
-  background: white;
-  padding: 10px;
-  margin-bottom: 10px;
-  border-radius: 6px;
+  background: var(--card-bg);
+  border-radius: 10px;
+  padding: 15px;
+  margin-bottom: 15px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.08);
 }
 input, select, button {
   width: 100%;
   padding: 10px;
   margin-bottom: 10px;
   font-size: 16px;
+  border-radius: 6px;
+  border: 1px solid #ccc;
+}
+button {
+  background: var(--primary);
+  color: white;
+  border: none;
+  cursor: pointer;
+  transition: 0.3s;
+}
+button:hover {
+  background: var(--primary-dark);
 }
 canvas {
   border: 2px solid #000;
   width: 100%;
   touch-action: none;
+  margin-bottom: 10px;
 }
 .row {
   display: flex;
   gap: 10px;
+  margin-bottom: 10px;
 }
 .row button, .row select {
   flex: 1;
+}
+.climb-item {
+  cursor: pointer;
+}
+.climb-item:hover {
+  background: #e9ecef;
+}
+.header {
+  text-align: center;
+  font-weight: 600;
+  font-size: 24px;
+  margin-bottom: 20px;
+  color: #007bff;
 }
 </style>
 </head>
 
 <body>
-
-<h1>🧗 Climb App</h1>
+<div class="header">🧗 Climb Pro</div>
 
 <h2>Add Wall</h2>
 <div class="card">
@@ -69,9 +110,10 @@ canvas {
       <option value="top">Top</option>
     </select>
 
-    <button onclick="toggleLock()">🔒 Lock</button>
+    <button onclick="toggleLock()" id="lockBtn">🔓 Unlock</button>
   </div>
 
+  <label>Hold size</label>
   <input type="range" min="6" max="30" value="14" id="holdSize">
 
   <input id="grade" placeholder="Grade (ex: 6B, 7A)">
@@ -85,11 +127,9 @@ canvas {
 <script>
 let walls = JSON.parse(localStorage.getItem("walls")) || [];
 let climbs = JSON.parse(localStorage.getItem("climbs")) || [];
-
 let currentWall = null;
 let holds = [];
 let img = new Image();
-
 let locked = false;
 
 // transform
@@ -101,7 +141,11 @@ let lastTouch = null;
 
 const canvas = document.getElementById("canvas");
 const ctx = canvas.getContext("2d");
+const holdSize = document.getElementById("holdSize");
+const holdType = document.getElementById("holdType");
+const lockBtn = document.getElementById("lockBtn");
 
+// Touch / pointer events
 canvas.addEventListener("pointerdown", e => {
   if (!currentWall) return;
 
@@ -111,7 +155,6 @@ canvas.addEventListener("pointerdown", e => {
   }
 
   const pos = screenToWorld(e.clientX, e.clientY);
-
   holds.push({
     x: pos.x,
     y: pos.y,
@@ -124,7 +167,6 @@ canvas.addEventListener("pointerdown", e => {
 
 canvas.addEventListener("pointermove", e => {
   if (!locked || !lastTouch) return;
-
   offsetX += e.clientX - lastTouch.x;
   offsetY += e.clientY - lastTouch.y;
   lastTouch = { x: e.clientX, y: e.clientY };
@@ -149,56 +191,49 @@ canvas.addEventListener("touchend", () => lastDist = null);
 
 function screenToWorld(x, y) {
   const rect = canvas.getBoundingClientRect();
-  return {
-    x: (x - rect.left - offsetX) / scale,
-    y: (y - rect.top - offsetY) / scale
-  };
+  return { x: (x - rect.left - offsetX)/scale, y: (y - rect.top - offsetY)/scale };
+}
+
+function distance(a,b){ return Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY); }
+
+function toggleLock() {
+  locked = !locked;
+  lockBtn.textContent = locked ? '🔒 Locked' : '🔓 Unlock';
+  alert(locked ? 'Wall locked (pan/zoom)' : 'Edit mode');
 }
 
 function draw() {
   if (!currentWall) return;
-
   canvas.width = img.width;
   canvas.height = img.height;
 
-  ctx.setTransform(scale, 0, 0, scale, offsetX, offsetY);
-  ctx.clearRect(-offsetX / scale, -offsetY / scale, canvas.width / scale, canvas.height / scale);
-  ctx.drawImage(img, 0, 0);
+  ctx.setTransform(scale,0,0,scale,offsetX,offsetY);
+  ctx.clearRect(-offsetX/scale, -offsetY/scale, canvas.width/scale, canvas.height/scale);
+  ctx.drawImage(img,0,0);
 
-  holds.forEach((h, i) => {
+  holds.forEach((h,i)=>{
     ctx.beginPath();
-    ctx.arc(h.x, h.y, h.r, 0, Math.PI * 2);
-    ctx.strokeStyle = h.type === "start" ? "green" : h.type === "top" ? "blue" : "red";
-    ctx.lineWidth = 3;
+    let color = h.type==='start'? 'var(--start-color)': h.type==='top'? 'var(--top-color)': 'var(--normal-color)';
+    ctx.fillStyle = color;
+    ctx.strokeStyle = color.replace('0.3','1');
+    ctx.lineWidth=2;
+    ctx.arc(h.x,h.y,h.r,0,Math.PI*2);
+    ctx.fill();
     ctx.stroke();
 
-    ctx.fillStyle = "black";
-    ctx.font = `${h.r}px Arial`;
-    ctx.fillText(i + 1, h.x - h.r / 3, h.y + h.r / 3);
+    ctx.fillStyle='black';
+    ctx.font=`${h.r}px Inter`;
+    ctx.fillText(i+1,h.x-h.r/3,h.y+h.r/3);
   });
 }
 
-function distance(a, b) {
-  return Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
-}
-
-function toggleLock() {
-  locked = !locked;
-  alert(locked ? "Wall locked (pan/zoom)" : "Edit mode");
-}
-
-function undoHold() {
-  holds.pop();
-  draw();
-}
-
+// Wall management
 function addWall() {
   if (!wallName.value || !wallImage.files[0]) return;
-
   const reader = new FileReader();
-  reader.onload = () => {
-    walls.push({ id: Date.now(), name: wallName.value, image: reader.result });
-    localStorage.setItem("walls", JSON.stringify(walls));
+  reader.onload = ()=>{
+    walls.push({id:Date.now(),name:wallName.value,image:reader.result});
+    localStorage.setItem('walls',JSON.stringify(walls));
     updateWallSelect();
   };
   reader.readAsDataURL(wallImage.files[0]);
@@ -206,59 +241,47 @@ function addWall() {
 
 function updateWallSelect() {
   wallSelect.innerHTML = `<option value="">Select wall</option>`;
-  walls.forEach(w => wallSelect.innerHTML += `<option value="${w.id}">${w.name}</option>`);
+  walls.forEach(w=> wallSelect.innerHTML+=`<option value="${w.id}">${w.name}</option>`);
 }
 updateWallSelect();
 
-function loadWall() {
-  currentWall = walls.find(w => w.id == wallSelect.value);
-  holds = [];
-  scale = 1;
-  offsetX = 0;
-  offsetY = 0;
-  img.onload = draw;
-  img.src = currentWall.image;
+function loadWall(){
+  currentWall = walls.find(w=>w.id==wallSelect.value);
+  holds=[];
+  scale=1; offsetX=0; offsetY=0;
+  img.onload=draw;
+  img.src=currentWall.image;
 }
 
-function saveClimb() {
-  if (!currentWall || !grade.value) return;
+function undoHold(){ holds.pop(); draw(); }
 
-  climbs.push({
-    id: Date.now(),
-    wallId: currentWall.id,
-    grade: grade.value,
-    holds,
-    date: new Date().toLocaleDateString()
-  });
-
-  localStorage.setItem("climbs", JSON.stringify(climbs));
-  holds = [];
+function saveClimb(){
+  if(!currentWall||!grade.value) return;
+  climbs.push({id:Date.now(),wallId:currentWall.id,grade:grade.value,holds, date:new Date().toLocaleDateString()});
+  localStorage.setItem('climbs',JSON.stringify(climbs));
+  holds=[];
   draw();
   drawClimbs();
 }
 
-function drawClimbs() {
-  climbList.innerHTML = "";
-  climbs.forEach(c => {
-    const wall = walls.find(w => w.id === c.wallId);
-    const div = document.createElement("div");
-    div.className = "card";
-    div.innerHTML = `<strong>${wall.name}</strong><br>Grade: ${c.grade}<br>${c.date}`;
-    div.onclick = () => {
-      currentWall = wall;
-      wallSelect.value = wall.id;
-      holds = c.holds;
-      scale = 1;
-      offsetX = 0;
-      offsetY = 0;
-      img.onload = draw;
-      img.src = wall.image;
+function drawClimbs(){
+  climbList.innerHTML='';
+  climbs.forEach(c=>{
+    const wall = walls.find(w=>w.id===c.wallId);
+    const div=document.createElement('div');
+    div.className='card climb-item';
+    div.innerHTML=`<strong>${wall.name}</strong><br>Grade: ${c.grade}<br>${c.date}`;
+    div.onclick=()=>{
+      currentWall=wall;
+      wallSelect.value=wall.id;
+      holds=c.holds;
+      scale=1; offsetX=0; offsetY=0;
+      img.onload=draw; img.src=wall.image;
     };
     climbList.appendChild(div);
   });
 }
 drawClimbs();
 </script>
-
 </body>
 </html>
