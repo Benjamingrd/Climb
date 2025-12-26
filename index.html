@@ -35,11 +35,12 @@ canvas {
   width: 100%;
   touch-action: none;
 }
-.climb-item {
-  cursor: pointer;
+.row {
+  display: flex;
+  gap: 10px;
 }
-.climb-item:hover {
-  background: #eee;
+.row button, .row select {
+  flex: 1;
 }
 </style>
 </head>
@@ -55,13 +56,22 @@ canvas {
   <button onclick="addWall()">Save Wall</button>
 </div>
 
-<h2>New Climb</h2>
+<h2>New / View Climb</h2>
 <div class="card">
   <select id="wallSelect" onchange="loadWall()"></select>
 
   <canvas id="canvas"></canvas>
 
-  <label>Hold size</label>
+  <div class="row">
+    <select id="holdType">
+      <option value="start">Start</option>
+      <option value="normal" selected>Normal</option>
+      <option value="top">Top</option>
+    </select>
+
+    <button onclick="toggleLock()">🔒 Lock</button>
+  </div>
+
   <input type="range" min="6" max="30" value="14" id="holdSize">
 
   <input id="grade" placeholder="Grade (ex: 6B, 7A)">
@@ -80,63 +90,69 @@ let currentWall = null;
 let holds = [];
 let img = new Image();
 
+let locked = false;
+
+// transform
+let scale = 1;
+let offsetX = 0;
+let offsetY = 0;
+let lastDist = null;
+let lastTouch = null;
+
 const canvas = document.getElementById("canvas");
 const ctx = canvas.getContext("2d");
-const holdSizeInput = document.getElementById("holdSize");
 
 canvas.addEventListener("pointerdown", e => {
   if (!currentWall) return;
 
-  const rect = canvas.getBoundingClientRect();
-  const scaleX = canvas.width / rect.width;
-  const scaleY = canvas.height / rect.height;
+  if (locked) {
+    lastTouch = { x: e.clientX, y: e.clientY };
+    return;
+  }
 
-  const x = (e.clientX - rect.left) * scaleX;
-  const y = (e.clientY - rect.top) * scaleY;
+  const pos = screenToWorld(e.clientX, e.clientY);
 
   holds.push({
-    x,
-    y,
-    r: parseInt(holdSizeInput.value)
+    x: pos.x,
+    y: pos.y,
+    r: +holdSize.value,
+    type: holdType.value
   });
 
   draw();
 });
 
-function addWall() {
-  if (!wallName.value || !wallImage.files[0]) {
-    alert("Wall name and image required");
-    return;
+canvas.addEventListener("pointermove", e => {
+  if (!locked || !lastTouch) return;
+
+  offsetX += e.clientX - lastTouch.x;
+  offsetY += e.clientY - lastTouch.y;
+  lastTouch = { x: e.clientX, y: e.clientY };
+  draw();
+});
+
+canvas.addEventListener("pointerup", () => lastTouch = null);
+
+canvas.addEventListener("touchmove", e => {
+  if (e.touches.length === 2) {
+    const d = distance(e.touches[0], e.touches[1]);
+    if (lastDist) {
+      scale *= d / lastDist;
+      scale = Math.max(0.5, Math.min(scale, 4));
+      draw();
+    }
+    lastDist = d;
   }
+}, { passive: false });
 
-  const reader = new FileReader();
-  reader.onload = () => {
-    walls.push({
-      id: Date.now(),
-      name: wallName.value,
-      image: reader.result
-    });
-    localStorage.setItem("walls", JSON.stringify(walls));
-    updateWallSelect();
-    alert("Wall saved");
+canvas.addEventListener("touchend", () => lastDist = null);
+
+function screenToWorld(x, y) {
+  const rect = canvas.getBoundingClientRect();
+  return {
+    x: (x - rect.left - offsetX) / scale,
+    y: (y - rect.top - offsetY) / scale
   };
-  reader.readAsDataURL(wallImage.files[0]);
-}
-
-function updateWallSelect() {
-  wallSelect.innerHTML = `<option value="">Select wall</option>`;
-  walls.forEach(w => {
-    wallSelect.innerHTML += `<option value="${w.id}">${w.name}</option>`;
-  });
-}
-updateWallSelect();
-
-function loadWall() {
-  const id = wallSelect.value;
-  currentWall = walls.find(w => w.id == id);
-  holds = [];
-  img.onload = draw;
-  img.src = currentWall.image;
 }
 
 function draw() {
@@ -145,15 +161,30 @@ function draw() {
   canvas.width = img.width;
   canvas.height = img.height;
 
+  ctx.setTransform(scale, 0, 0, scale, offsetX, offsetY);
+  ctx.clearRect(-offsetX / scale, -offsetY / scale, canvas.width / scale, canvas.height / scale);
   ctx.drawImage(img, 0, 0);
 
-  holds.forEach(h => {
+  holds.forEach((h, i) => {
     ctx.beginPath();
     ctx.arc(h.x, h.y, h.r, 0, Math.PI * 2);
-    ctx.strokeStyle = "red";
+    ctx.strokeStyle = h.type === "start" ? "green" : h.type === "top" ? "blue" : "red";
     ctx.lineWidth = 3;
     ctx.stroke();
+
+    ctx.fillStyle = "black";
+    ctx.font = `${h.r}px Arial`;
+    ctx.fillText(i + 1, h.x - h.r / 3, h.y + h.r / 3);
   });
+}
+
+function distance(a, b) {
+  return Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
+}
+
+function toggleLock() {
+  locked = !locked;
+  alert(locked ? "Wall locked (pan/zoom)" : "Edit mode");
 }
 
 function undoHold() {
@@ -161,24 +192,47 @@ function undoHold() {
   draw();
 }
 
+function addWall() {
+  if (!wallName.value || !wallImage.files[0]) return;
+
+  const reader = new FileReader();
+  reader.onload = () => {
+    walls.push({ id: Date.now(), name: wallName.value, image: reader.result });
+    localStorage.setItem("walls", JSON.stringify(walls));
+    updateWallSelect();
+  };
+  reader.readAsDataURL(wallImage.files[0]);
+}
+
+function updateWallSelect() {
+  wallSelect.innerHTML = `<option value="">Select wall</option>`;
+  walls.forEach(w => wallSelect.innerHTML += `<option value="${w.id}">${w.name}</option>`);
+}
+updateWallSelect();
+
+function loadWall() {
+  currentWall = walls.find(w => w.id == wallSelect.value);
+  holds = [];
+  scale = 1;
+  offsetX = 0;
+  offsetY = 0;
+  img.onload = draw;
+  img.src = currentWall.image;
+}
+
 function saveClimb() {
-  if (!currentWall || !grade.value) {
-    alert("Wall and grade required");
-    return;
-  }
+  if (!currentWall || !grade.value) return;
 
   climbs.push({
     id: Date.now(),
     wallId: currentWall.id,
     grade: grade.value,
-    holds: JSON.parse(JSON.stringify(holds)),
+    holds,
     date: new Date().toLocaleDateString()
   });
 
   localStorage.setItem("climbs", JSON.stringify(climbs));
-
   holds = [];
-  grade.value = "";
   draw();
   drawClimbs();
 }
@@ -188,17 +242,15 @@ function drawClimbs() {
   climbs.forEach(c => {
     const wall = walls.find(w => w.id === c.wallId);
     const div = document.createElement("div");
-    div.className = "card climb-item";
-    div.innerHTML = `
-      <strong>${wall.name}</strong><br>
-      Grade: ${c.grade}<br>
-      ${c.date}<br>
-      <em>Tap to view</em>
-    `;
+    div.className = "card";
+    div.innerHTML = `<strong>${wall.name}</strong><br>Grade: ${c.grade}<br>${c.date}`;
     div.onclick = () => {
       currentWall = wall;
       wallSelect.value = wall.id;
       holds = c.holds;
+      scale = 1;
+      offsetX = 0;
+      offsetY = 0;
       img.onload = draw;
       img.src = wall.image;
     };
