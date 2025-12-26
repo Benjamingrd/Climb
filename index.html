@@ -7,8 +7,6 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black">
 <meta name="apple-mobile-web-app-title" content="Climb Pro">
-
-<!-- Google Font -->
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet">
 
 <style>
@@ -29,9 +27,7 @@ body {
   padding: 10px;
   color: #333;
 }
-h1,h2 {
-  margin: 20px 0 10px;
-}
+h1,h2 { margin: 20px 0 10px; }
 .card {
   background: var(--card-bg);
   border-radius: 10px;
@@ -54,29 +50,19 @@ button {
   cursor: pointer;
   transition: 0.3s;
 }
-button:hover {
-  background: var(--primary-dark);
-}
+button:hover { background: var(--primary-dark); }
 canvas {
   border: 2px solid #000;
   width: 100%;
+  max-height: 400px;
   touch-action: none;
   margin-bottom: 10px;
+  display: block;
 }
-.row {
-  display: flex;
-  gap: 10px;
-  margin-bottom: 10px;
-}
-.row button, .row select {
-  flex: 1;
-}
-.climb-item {
-  cursor: pointer;
-}
-.climb-item:hover {
-  background: #e9ecef;
-}
+.row { display: flex; gap: 10px; margin-bottom: 10px; }
+.row button, .row select { flex: 1; }
+.climb-item { cursor: pointer; }
+.climb-item:hover { background: #e9ecef; }
 .header {
   text-align: center;
   font-weight: 600;
@@ -109,7 +95,6 @@ canvas {
       <option value="normal" selected>Normal</option>
       <option value="top">Top</option>
     </select>
-
     <button onclick="toggleLock()" id="lockBtn">🔓 Unlock</button>
   </div>
 
@@ -139,29 +124,23 @@ let offsetY = 0;
 let lastDist = null;
 let lastTouch = null;
 
+// displayed canvas size
+let displayWidth = 0;
+let displayHeight = 0;
+
 const canvas = document.getElementById("canvas");
 const ctx = canvas.getContext("2d");
 const holdSize = document.getElementById("holdSize");
 const holdType = document.getElementById("holdType");
 const lockBtn = document.getElementById("lockBtn");
 
-// Touch / pointer events
+// Map touch to image coordinates
 canvas.addEventListener("pointerdown", e => {
   if (!currentWall) return;
+  if (locked) { lastTouch = { x: e.clientX, y: e.clientY }; return; }
 
-  if (locked) {
-    lastTouch = { x: e.clientX, y: e.clientY };
-    return;
-  }
-
-  const pos = screenToWorld(e.clientX, e.clientY);
-  holds.push({
-    x: pos.x,
-    y: pos.y,
-    r: +holdSize.value,
-    type: holdType.value
-  });
-
+  const pos = screenToImageCoords(e.clientX, e.clientY);
+  holds.push({ x: pos.x, y: pos.y, r: +holdSize.value, type: holdType.value });
   draw();
 });
 
@@ -172,66 +151,73 @@ canvas.addEventListener("pointermove", e => {
   lastTouch = { x: e.clientX, y: e.clientY };
   draw();
 });
-
 canvas.addEventListener("pointerup", () => lastTouch = null);
 
 canvas.addEventListener("touchmove", e => {
-  if (e.touches.length === 2) {
+  if(e.touches.length===2){
+    e.preventDefault();
     const d = distance(e.touches[0], e.touches[1]);
-    if (lastDist) {
-      scale *= d / lastDist;
-      scale = Math.max(0.5, Math.min(scale, 4));
+    if(lastDist){
+      scale *= d/lastDist;
+      scale = Math.max(0.5, Math.min(scale,4));
       draw();
     }
     lastDist = d;
   }
-}, { passive: false });
+},{passive:false});
+canvas.addEventListener("touchend",()=>lastDist=null);
 
-canvas.addEventListener("touchend", () => lastDist = null);
-
-function screenToWorld(x, y) {
+function screenToImageCoords(x,y){
   const rect = canvas.getBoundingClientRect();
-  return { x: (x - rect.left - offsetX)/scale, y: (y - rect.top - offsetY)/scale };
+  const relX = x - rect.left;
+  const relY = y - rect.top;
+  const imgX = relX/rect.width * img.width;
+  const imgY = relY/rect.height * img.height;
+  return {x: imgX, y: imgY};
 }
 
-function distance(a,b){ return Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY); }
+function distance(a,b){ return Math.hypot(a.clientX-b.clientX,a.clientY-b.clientY); }
 
-function toggleLock() {
-  locked = !locked;
-  lockBtn.textContent = locked ? '🔒 Locked' : '🔓 Unlock';
-  alert(locked ? 'Wall locked (pan/zoom)' : 'Edit mode');
+function toggleLock(){ 
+  locked=!locked;
+  lockBtn.textContent=locked?'🔒 Locked':'🔓 Unlock';
 }
 
-function draw() {
-  if (!currentWall) return;
-  canvas.width = img.width;
-  canvas.height = img.height;
+function draw(){
+  if(!currentWall) return;
+  displayWidth = canvas.clientWidth;
+  displayHeight = canvas.clientHeight;
+  canvas.width = displayWidth;
+  canvas.height = displayHeight;
 
   ctx.setTransform(scale,0,0,scale,offsetX,offsetY);
-  ctx.clearRect(-offsetX/scale, -offsetY/scale, canvas.width/scale, canvas.height/scale);
-  ctx.drawImage(img,0,0);
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+
+  ctx.drawImage(img,0,0,displayWidth,displayHeight);
 
   holds.forEach((h,i)=>{
+    const x = h.x/img.width*displayWidth;
+    const y = h.y/img.height*displayHeight;
+    const r = h.r;
     ctx.beginPath();
     let color = h.type==='start'? 'var(--start-color)': h.type==='top'? 'var(--top-color)': 'var(--normal-color)';
-    ctx.fillStyle = color;
-    ctx.strokeStyle = color.replace('0.3','1');
+    ctx.fillStyle=color;
+    ctx.strokeStyle=color.replace('0.3','1');
     ctx.lineWidth=2;
-    ctx.arc(h.x,h.y,h.r,0,Math.PI*2);
-    ctx.fill();
-    ctx.stroke();
+    ctx.arc(x,y,r,0,Math.PI*2);
+    ctx.fill(); ctx.stroke();
 
     ctx.fillStyle='black';
-    ctx.font=`${h.r}px Inter`;
-    ctx.fillText(i+1,h.x-h.r/3,h.y+h.r/3);
+    ctx.font=`${r}px Inter`;
+    ctx.fillText(i+1,x-r/3,y+r/3);
   });
 }
 
-// Wall management
-function addWall() {
-  if (!wallName.value || !wallImage.files[0]) return;
-  const reader = new FileReader();
-  reader.onload = ()=>{
+// Walls
+function addWall(){
+  if(!wallName.value || !wallImage.files[0]) return;
+  const reader=new FileReader();
+  reader.onload=()=>{
     walls.push({id:Date.now(),name:wallName.value,image:reader.result});
     localStorage.setItem('walls',JSON.stringify(walls));
     updateWallSelect();
@@ -239,16 +225,15 @@ function addWall() {
   reader.readAsDataURL(wallImage.files[0]);
 }
 
-function updateWallSelect() {
-  wallSelect.innerHTML = `<option value="">Select wall</option>`;
-  walls.forEach(w=> wallSelect.innerHTML+=`<option value="${w.id}">${w.name}</option>`);
+function updateWallSelect(){
+  wallSelect.innerHTML='<option value="">Select wall</option>';
+  walls.forEach(w=>wallSelect.innerHTML+=`<option value="${w.id}">${w.name}</option>`);
 }
 updateWallSelect();
 
 function loadWall(){
-  currentWall = walls.find(w=>w.id==wallSelect.value);
-  holds=[];
-  scale=1; offsetX=0; offsetY=0;
+  currentWall=walls.find(w=>w.id==wallSelect.value);
+  holds=[]; scale=1; offsetX=0; offsetY=0;
   img.onload=draw;
   img.src=currentWall.image;
 }
@@ -257,11 +242,9 @@ function undoHold(){ holds.pop(); draw(); }
 
 function saveClimb(){
   if(!currentWall||!grade.value) return;
-  climbs.push({id:Date.now(),wallId:currentWall.id,grade:grade.value,holds, date:new Date().toLocaleDateString()});
+  climbs.push({id:Date.now(),wallId:currentWall.id,grade:grade.value,holds,date:new Date().toLocaleDateString()});
   localStorage.setItem('climbs',JSON.stringify(climbs));
-  holds=[];
-  draw();
-  drawClimbs();
+  holds=[]; draw(); drawClimbs();
 }
 
 function drawClimbs(){
