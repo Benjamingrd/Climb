@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Climb App</title>
+
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<meta name="apple-mobile-web-app-title" content="Climb">
+
+<style>
+body {
+  font-family: Arial, sans-serif;
+  background: #f2f2f2;
+  margin: 10px;
+}
+h1, h2 {
+  margin-top: 20px;
+}
+.card {
+  background: white;
+  padding: 10px;
+  margin-bottom: 10px;
+  border-radius: 6px;
+}
+input, select, button {
+  width: 100%;
+  padding: 10px;
+  margin-bottom: 10px;
+  font-size: 16px;
+}
+canvas {
+  border: 2px solid #000;
+  width: 100%;
+  touch-action: none;
+}
+.climb-item {
+  cursor: pointer;
+}
+.climb-item:hover {
+  background: #eee;
+}
+</style>
+</head>
+
+<body>
+
+<h1>🧗 Climb App</h1>
+
+<h2>Add Wall</h2>
+<div class="card">
+  <input id="wallName" placeholder="Wall name">
+  <input type="file" id="wallImage" accept="image/*">
+  <button onclick="addWall()">Save Wall</button>
+</div>
+
+<h2>New Climb</h2>
+<div class="card">
+  <select id="wallSelect" onchange="loadWall()"></select>
+
+  <canvas id="canvas"></canvas>
+
+  <label>Hold size</label>
+  <input type="range" min="6" max="30" value="14" id="holdSize">
+
+  <input id="grade" placeholder="Grade (ex: 6B, 7A)">
+  <button onclick="undoHold()">Undo last hold</button>
+  <button onclick="saveClimb()">Save Climb</button>
+</div>
+
+<h2>My Climbs</h2>
+<div id="climbList"></div>
+
+<script>
+let walls = JSON.parse(localStorage.getItem("walls")) || [];
+let climbs = JSON.parse(localStorage.getItem("climbs")) || [];
+
+let currentWall = null;
+let holds = [];
+let img = new Image();
+
+const canvas = document.getElementById("canvas");
+const ctx = canvas.getContext("2d");
+const holdSizeInput = document.getElementById("holdSize");
+
+canvas.addEventListener("pointerdown", e => {
+  if (!currentWall) return;
+
+  const rect = canvas.getBoundingClientRect();
+  const scaleX = canvas.width / rect.width;
+  const scaleY = canvas.height / rect.height;
+
+  const x = (e.clientX - rect.left) * scaleX;
+  const y = (e.clientY - rect.top) * scaleY;
+
+  holds.push({
+    x,
+    y,
+    r: parseInt(holdSizeInput.value)
+  });
+
+  draw();
+});
+
+function addWall() {
+  if (!wallName.value || !wallImage.files[0]) {
+    alert("Wall name and image required");
+    return;
+  }
+
+  const reader = new FileReader();
+  reader.onload = () => {
+    walls.push({
+      id: Date.now(),
+      name: wallName.value,
+      image: reader.result
+    });
+    localStorage.setItem("walls", JSON.stringify(walls));
+    updateWallSelect();
+    alert("Wall saved");
+  };
+  reader.readAsDataURL(wallImage.files[0]);
+}
+
+function updateWallSelect() {
+  wallSelect.innerHTML = `<option value="">Select wall</option>`;
+  walls.forEach(w => {
+    wallSelect.innerHTML += `<option value="${w.id}">${w.name}</option>`;
+  });
+}
+updateWallSelect();
+
+function loadWall() {
+  const id = wallSelect.value;
+  currentWall = walls.find(w => w.id == id);
+  holds = [];
+  img.onload = draw;
+  img.src = currentWall.image;
+}
+
+function draw() {
+  if (!currentWall) return;
+
+  canvas.width = img.width;
+  canvas.height = img.height;
+
+  ctx.drawImage(img, 0, 0);
+
+  holds.forEach(h => {
+    ctx.beginPath();
+    ctx.arc(h.x, h.y, h.r, 0, Math.PI * 2);
+    ctx.strokeStyle = "red";
+    ctx.lineWidth = 3;
+    ctx.stroke();
+  });
+}
+
+function undoHold() {
+  holds.pop();
+  draw();
+}
+
+function saveClimb() {
+  if (!currentWall || !grade.value) {
+    alert("Wall and grade required");
+    return;
+  }
+
+  climbs.push({
+    id: Date.now(),
+    wallId: currentWall.id,
+    grade: grade.value,
+    holds: JSON.parse(JSON.stringify(holds)),
+    date: new Date().toLocaleDateString()
+  });
+
+  localStorage.setItem("climbs", JSON.stringify(climbs));
+
+  holds = [];
+  grade.value = "";
+  draw();
+  drawClimbs();
+}
+
+function drawClimbs() {
+  climbList.innerHTML = "";
+  climbs.forEach(c => {
+    const wall = walls.find(w => w.id === c.wallId);
+    const div = document.createElement("div");
+    div.className = "card climb-item";
+    div.innerHTML = `
+      <strong>${wall.name}</strong><br>
+      Grade: ${c.grade}<br>
+      ${c.date}<br>
+      <em>Tap to view</em>
+    `;
+    div.onclick = () => {
+      currentWall = wall;
+      wallSelect.value = wall.id;
+      holds = c.holds;
+      img.onload = draw;
+      img.src = wall.image;
+    };
+    climbList.appendChild(div);
+  });
+}
+drawClimbs();
+</script>
+
+</body>
+</html>
